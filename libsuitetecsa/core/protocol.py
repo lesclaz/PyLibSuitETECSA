@@ -660,7 +660,9 @@ class Shop:
         "nom_provincias_api": "/nomencladores/nom_provincias_api",
         "autenticarse_api": "/autenticarse/autenticarse_api",
         "perfil_api": "/usuarios/perfil_api",
-        "carrito_api": "/carrito_pagar/carrito_api"
+        "carrito_api": "/carrito_pagar/carrito_api",
+        "servicios_moviles_api": "/servicios_moviles/servicios_moviles/"
+                                 "servicios_moviles_api"
     }
     TYPE_EXCEPTIONS = {
         "get_info": GetInfoException,
@@ -717,6 +719,15 @@ class Shop:
         )
 
     @classmethod
+    @find_error_shop(TYPE_EXCEPTIONS["get_info"])
+    def __mobile_services_api(cls, session: ShopSession, data: dict):
+        return session.requests_session.post(
+            f'{cls.BASE_URL}{cls.APIs["servicios_moviles_api"]}',
+            json=data,
+            verify=False
+        )
+
+    @classmethod
     def is_logged_in(cls, session: ShopSession):
         try:
             json.loads(cls.__profile_api(session))
@@ -767,4 +778,18 @@ class Shop:
     def get_car(cls, session: ShopSession):
         return json.loads(
             cls.__car_api(session)
+        )
+
+    @classmethod
+    def get_status_services(cls, session: ShopSession, service: dict):
+        return json.loads(
+            cls.__mobile_services_api(
+                session,
+                {
+                    "operacion": "get_estado_servicio",
+                    "servicio": service["service"],
+                    "carnet": service["ci"],
+                    "tipo_ci": service["typeci"]
+                }
+            )
         )
