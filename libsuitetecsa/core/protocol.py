@@ -12,6 +12,7 @@
 #  #
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import json
 import re
 from datetime import date
@@ -26,18 +27,7 @@ from libsuitetecsa.core.models import User, Transfer, Connection, Recharge, \
     QuotePaid
 from libsuitetecsa.core.session import UserPortalSession, NautaSession, \
     ShopSession
-
-
-def tareas_comunes(func):
-    def wrapper(*args, **kwargs):
-        resp = func(*args, **kwargs)
-        if not resp.ok:
-            raise GetInfoException(
-                f"No se pudo llevar a cabo la solicitud -> {resp.status_code}:"
-                f" {resp.reason}"
-            )
-        return resp.text
-    return wrapper
+from libsuitetecsa.utils import find_error_shop
 
 
 class UserPortal:
@@ -667,7 +657,14 @@ class Shop:
     BASE_URL = "https://www.tienda.etecsa.cu"
     APIs = {
         "datos_pagina_api": "/tienda_admin/datos_pagina_api",
-        "nom_provincias_api": "/nomencladores/nom_provincias_api"
+        "nom_provincias_api": "/nomencladores/nom_provincias_api",
+        "autenticarse_api": "/autenticarse/autenticarse_api",
+        "perfil_api": "/usuarios/perfil_api",
+        "carrito_api": "/carrito_pagar/carrito_api"
+    }
+    TYPE_EXCEPTIONS = {
+        "get_info": GetInfoException,
+        "login": LoginException
     }
 
     @classmethod
@@ -675,7 +672,7 @@ class Shop:
         return ShopSession()
 
     @classmethod
-    @tareas_comunes
+    @find_error_shop(TYPE_EXCEPTIONS["get_info"])
     def __datapage_api(cls, session: ShopSession, data: dict):
         return session.requests_session.post(
             f'{cls.BASE_URL}{cls.APIs["datos_pagina_api"]}',
@@ -684,12 +681,48 @@ class Shop:
         )
 
     @classmethod
-    @tareas_comunes
+    @find_error_shop(TYPE_EXCEPTIONS["get_info"])
     def __states_api(cls, session: ShopSession):
         return session.requests_session.get(
             f'{cls.BASE_URL}{cls.APIs["nom_provincias_api"]}',
             verify=False
         )
+
+    @classmethod
+    @find_error_shop(TYPE_EXCEPTIONS["login"])
+    def __auth_api(cls, session: ShopSession, data: dict):
+        return session.requests_session.put(
+            f'{cls.BASE_URL}{cls.APIs["autenticarse_api"]}',
+            json=data,
+            verify=False
+        )
+
+    @classmethod
+    @find_error_shop(TYPE_EXCEPTIONS["get_info"])
+    def __profile_api(cls, session: ShopSession, data: dict = None):
+        return session.requests_session.get(
+            f'{cls.BASE_URL}{cls.APIs["perfil_api"]}',
+            verify=False
+        ) if not data else session.requests_session.post(
+            f'{cls.BASE_URL}{cls.APIs["perfil_api"]}',
+            json=data,
+            verify=False
+        )
+
+    @classmethod
+    @find_error_shop(TYPE_EXCEPTIONS["get_info"])
+    def __car_api(cls, session: ShopSession):
+        return session.requests_session.get(
+            f'{cls.BASE_URL}{cls.APIs["carrito_api"]}'
+        )
+
+    @classmethod
+    def is_logged_in(cls, session: ShopSession):
+        try:
+            json.loads(cls.__profile_api(session))
+            return True
+        except GetInfoException:
+            return False
 
     @classmethod
     def get_banners(cls, session: ShopSession):
@@ -706,4 +739,32 @@ class Shop:
     def get_states(cls, session: ShopSession):
         return json.loads(
             cls.__states_api(session)
+        )
+
+    @classmethod
+    def login(cls, session: ShopSession, user: str, passwd: str):
+        cls.__auth_api(
+            session,
+            {
+                "operacion": "autenticar",
+                "usuario": user,
+                "contrasenna": passwd
+            }
+        )
+
+    @classmethod
+    def get_mobile_services(cls, session: ShopSession):
+        return json.loads(
+            cls.__profile_api(
+                session,
+                {
+                    "operacion": "get_servicios_moviles"
+                }
+            )
+        )
+
+    @classmethod
+    def get_car(cls, session: ShopSession):
+        return json.loads(
+            cls.__car_api(session)
         )
