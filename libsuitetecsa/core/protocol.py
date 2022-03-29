@@ -12,7 +12,7 @@
 #  #
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+import json
 import re
 from datetime import date
 
@@ -24,7 +24,20 @@ from libsuitetecsa.core.exception import GetInfoException, TransferException, \
     LoginException, NautaException, LogoutException, NotNautaHomeAccount
 from libsuitetecsa.core.models import User, Transfer, Connection, Recharge, \
     QuotePaid
-from libsuitetecsa.core.session import UserPortalSession, NautaSession
+from libsuitetecsa.core.session import UserPortalSession, NautaSession, \
+    ShopSession
+
+
+def tareas_comunes(func):
+    def wrapper(*args, **kwargs):
+        resp = func(*args, **kwargs)
+        if not resp.ok:
+            raise GetInfoException(
+                f"No se pudo llevar a cabo la solicitud -> {resp.status_code}:"
+                f" {resp.reason}"
+            )
+        return resp.text
+    return wrapper
 
 
 class UserPortal:
@@ -648,3 +661,49 @@ class Nauta(object):
             )
 
         return credit_tag.get_text().strip()
+
+
+class Shop:
+    BASE_URL = "https://www.tienda.etecsa.cu"
+    APIs = {
+        "datos_pagina_api": "/tienda_admin/datos_pagina_api",
+        "nom_provincias_api": "/nomencladores/nom_provincias_api"
+    }
+
+    @classmethod
+    def init_session(cls):
+        return ShopSession()
+
+    @classmethod
+    @tareas_comunes
+    def __datapage_api(cls, session: ShopSession, data: dict):
+        return session.requests_session.post(
+            f'{cls.BASE_URL}{cls.APIs["datos_pagina_api"]}',
+            json=data,
+            verify=False
+        )
+
+    @classmethod
+    @tareas_comunes
+    def __states_api(cls, session: ShopSession):
+        return session.requests_session.get(
+            f'{cls.BASE_URL}{cls.APIs["nom_provincias_api"]}',
+            verify=False
+        )
+
+    @classmethod
+    def get_banners(cls, session: ShopSession):
+        return json.loads(
+            cls.__datapage_api(
+                session,
+                {
+                    "operacion": "cargar_datos_banner_top"
+                }
+            )
+        )["banner_top"]
+
+    @classmethod
+    def get_states(cls, session: ShopSession):
+        return json.loads(
+            cls.__states_api(session)
+        )
